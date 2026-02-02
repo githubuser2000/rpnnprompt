@@ -1,18 +1,18 @@
+// ui.rs - Vollständig korrigierte Version
 use crate::csv_data::CsvData;
-use crate::autocomplete::SimpleAutocomplete;
 use inquire::Text;
 use anyhow::Result;
 
 pub fn run() -> Result<()> {
-    println!("🎯 CSV Zwei-Stufen Autocomplete\n");
+    println!("🔍 CSV Zwei-Stufen Autocomplete mit Zeilenangabe-Validierung\n");
     
     // CSV laden
     let csv_data = CsvData::new();
     
     loop {
-        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("SCHRITT 1: Wählen Sie eine erste Spalte");
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓");
+        println!("┃ SCHRITT 1: Wählen Sie eine erste Spalte                                ┃");
+        println!("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
         
         // Autocomplete für erste Spalte
         let first_autocomplete = csv_data.get_first_level_autocomplete();
@@ -21,7 +21,7 @@ pub fn run() -> Result<()> {
             .with_help_message("Beginnen Sie zu tippen für Vorschläge")
             .prompt()?;
         
-        println!("✓ Ausgewählt: '{}'", first_choice);
+        println!("✅ Ausgewählt: '{}'", first_choice);
         
         // Zeige Details zu dieser ersten Spalte
         csv_data.show_details_for_first(&first_choice);
@@ -44,9 +44,9 @@ pub fn run() -> Result<()> {
             }
         };
         
-        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("SCHRITT 2: Wählen Sie eine zweite Spalte");
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓");
+        println!("┃ SCHRITT 2: Wählen Sie eine zweite Spalte                                ┃");
+        println!("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
         println!("Verfügbare Optionen für '{}':", first_choice);
         
         // Autocomplete für zweite Spalte (abhängig von erster Wahl)
@@ -58,13 +58,66 @@ pub fn run() -> Result<()> {
             .with_help_message(&format!("{} Optionen verfügbar", seconds.len()))
             .prompt()?;
         
-        println!("✓ Ausgewählt: '{}' → '{}'", first_choice, second_choice);
+        println!("✅ Ausgewählt: '{}' → '{}'", first_choice, second_choice);
         
         // Zeige vollständige Details zum Paar
         csv_data.show_pair_details(&first_choice, &second_choice);
         
-        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("Möchten Sie eine weitere Suche durchführen? (j/N)");
+        println!("\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓");
+        println!("┃ SCHRITT 3: Zeilenangabe eingeben und validieren                         ┃");
+        println!("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+        println!("Beispiele für gültige Zeilenangaben:");
+        println!("  • Einzelne Zeilen: 1,2,3");
+        println!("  • Bereiche: 3-8,12");
+        println!("  • Mit v: v1, v2-5");
+        println!("  • Gemischt: 1-5,10,12-15");
+        println!("  • Generatoren: (1,3,5), [2,4,6]");
+        println!("  • Bruchangaben: 1/2, 3/4-5/6");
+        println!("  • Leer lassen für alle Zeilen");
+        
+        let mut zeilen_history = Vec::new();
+        
+        loop {
+            let zeilen_input = Text::new("Zeilenangabe eingeben (oder 'fertig' zum Beenden):")
+                .with_help_message("Drücken Sie Enter ohne Eingabe für alle Zeilen")
+                .prompt()?;
+            
+            if zeilen_input.trim().eq_ignore_ascii_case("fertig") {
+                break;
+            }
+            
+            // Validierung durchführen
+            let result = validate_and_process_zeilenangabe(
+                &zeilen_input, 
+                &first_choice, 
+                &second_choice, 
+                &csv_data
+            );
+            
+            if let Ok(zeilen_numbers) = result {
+                if !zeilen_numbers.is_empty() {
+                    zeilen_history.extend(zeilen_numbers);
+                }
+            }
+            
+            println!("\nWeitere Zeilenangabe eingeben? (j/N)");
+            let again = Text::new("")
+                .with_default("n")
+                .prompt()?;
+            
+            if !again.to_lowercase().starts_with('j') {
+                break;
+            }
+        }
+        
+        // Zeige Zusammenfassung
+        if !zeilen_history.is_empty() {
+            show_ergebnis_zusammenfassung(&first_choice, &second_choice, &zeilen_history, &csv_data);
+        }
+        
+        println!("\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓");
+        println!("┃ Möchten Sie eine weitere Suche durchführen? (j/N)                       ┃");
+        println!("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
         let again = Text::new("Weitersuchen?")
             .with_default("n")
             .prompt()?;
@@ -73,10 +126,286 @@ pub fn run() -> Result<()> {
             break;
         }
         
-        println!("\n⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼");
+        println!("\n🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄🔄");
     }
     
-    println!("\n🏁 Programm beendet.");
+    println!("\n👋 Programm beendet.");
     
     Ok(())
+}
+
+// Funktion zur Validierung und Verarbeitung von Zeilenangaben
+fn validate_and_process_zeilenangabe(
+    input: &str,
+    first: &str,
+    second: &str,
+    csv_data: &CsvData,
+) -> Result<Vec<i32>, String> {
+    let trimmed = input.trim();
+    
+    println!("\n🔎 Validierung der Zeilenangabe '{}'...", trimmed);
+    
+    // Wenn leer, alle Zeilen nehmen
+    if trimmed.is_empty() {
+        println!("✅ Alle Zeilen werden ausgewählt");
+        let all_rows = get_all_row_numbers_for_pair(first, second, csv_data);
+        show_selected_rows(first, second, &all_rows, csv_data);
+        return Ok(all_rows);
+    }
+    
+    // Prüfe verschiedene Formate
+    if crate::if_is_zeilen_angabe::is_zeilen_angabe(trimmed) {
+        println!("✅ Gültige Zeilenangabe erkannt!");
+        
+        // Zeilen in einzelne Zahlen umwandeln
+        if let Some(zeilen_numbers) = parse_zeilen_angabe_to_numbers(trimmed) {
+            println!("✅ Extrahierte Zeilennummern: {:?}", zeilen_numbers);
+            
+            // Überprüfe, ob die Zeilen existieren
+            let valid_rows = validate_row_numbers(&zeilen_numbers, csv_data);
+            
+            // Zeige die entsprechenden CSV-Zeilen an
+            show_selected_rows(first, second, &valid_rows, csv_data);
+            
+            Ok(valid_rows)
+        } else {
+            let err = "Konnte Zeilenangabe nicht parsen".to_string();
+            println!("⚠️ {}", err);
+            Err(err)
+        }
+    } else if crate::if_is_zeilen_angabe::is_zeilen_bruch_angabe(trimmed) {
+        println!("✅ Gültige Bruchangabe erkannt!");
+        println!("✅ Bruchangabe: {}", trimmed);
+        
+        // Hier könnten Sie spezielle Bruch-Verarbeitung implementieren
+        process_bruch_angabe(trimmed, first, second, csv_data);
+        Ok(Vec::new())
+    } else {
+        let err = format!("Ungültige Eingabe: '{}'", trimmed);
+        println!("⚠️ {}", err);
+        println!("  Erlaubte Formate:");
+        println!("    - Einzelne Zahlen: 1,2,3");
+        println!("    - Bereiche: 1-5,10-15");
+        println!("    - Mit 'v': v1, v2-5");
+        println!("    - Generatoren: (1,3,5), [2,4,6]");
+        println!("    - Brüche: 1/2, 3/4-5/6");
+        Err(err)
+    }
+}
+
+// Parst eine Zeilenangabe in eine Liste von Zahlen
+fn parse_zeilen_angabe_to_numbers(input: &str) -> Option<Vec<i32>> {
+    use crate::if_is_zeilen_angabe::split;
+    
+    let parts = split::split_with_bracket_balance(input);
+    let mut numbers = Vec::new();
+    
+    for part in parts {
+        if part.is_empty() {
+            continue;
+        }
+        
+        // Entferne führendes 'v' falls vorhanden
+        let clean_part = if part.starts_with('v') || part.starts_with('V') {
+            &part[1..]
+        } else {
+            part
+        };
+        
+        // Prüfe auf Generator-Notation
+        if let Some(generator_nums) = crate::if_is_zeilen_angabe::str_as_generator_to_list_of_num_strs(clean_part) {
+            for num_str in generator_nums {
+                if let Ok(num) = num_str.parse::<i32>() {
+                    numbers.push(num);
+                }
+            }
+            continue;
+        }
+        
+        // Prüfe auf Generator-Notation mit führendem Zeichen
+        if part.len() > 1 {
+            let first_char = part.chars().next().unwrap();
+            if !first_char.is_ascii_digit() && first_char != '-' && first_char != 'v' && first_char != 'V' {
+                if let Some(generator_nums) = crate::if_is_zeilen_angabe::str_as_generator_to_list_of_num_strs(&part[1..]) {
+                    for num_str in generator_nums {
+                        if let Ok(num) = num_str.parse::<i32>() {
+                            numbers.push(num);
+                        }
+                    }
+                    continue;
+                }
+            }
+        }
+        
+        // Prüfe auf Bereich (z.B. "3-8")
+        if let Some((start_str, end_str)) = clean_part.split_once('-') {
+            if let (Ok(start), Ok(end)) = (start_str.parse::<i32>(), end_str.parse::<i32>()) {
+                for i in start..=end {
+                    numbers.push(i);
+                }
+                continue;
+            }
+        }
+        
+        // Einzelne Zahl
+        if let Ok(num) = clean_part.parse::<i32>() {
+            numbers.push(num);
+        }
+    }
+    
+    // Duplikate entfernen und sortieren
+    numbers.sort();
+    numbers.dedup();
+    
+    Some(numbers)
+}
+
+// Verarbeitet Bruchangaben
+fn process_bruch_angabe(input: &str, first: &str, second: &str, _csv_data: &CsvData) {
+    println!("ℹ️  Bruchangabe-Verarbeitung für '{}' → '{}'", first, second);
+    println!("Bruch: {}", input);
+    
+    // Einfache Implementierung - kann erweitert werden
+    let parts: Vec<&str> = input.split(',').collect();
+    for part in parts {
+        if part.contains('/') {
+            println!("  Bruch '{}' erkannt", part);
+        }
+    }
+}
+
+// Holt alle Zeilennummern für ein Paar
+fn get_all_row_numbers_for_pair(first: &str, second: &str, csv_data: &CsvData) -> Vec<i32> {
+    let mut row_numbers = Vec::new();
+    
+    for (i, (first_cols, second_cols, _)) in csv_data.raw_data.iter().enumerate() {
+        if first_cols.contains(&first.to_string()) && second_cols.contains(&second.to_string()) {
+            row_numbers.push((i + 1) as i32); // 1-basierte Zeilennummern
+        }
+    }
+    
+    row_numbers
+}
+
+// Validiert Zeilennummern gegen CSV-Daten
+fn validate_row_numbers(zeilen_numbers: &[i32], csv_data: &CsvData) -> Vec<i32> {
+    let max_row = csv_data.raw_data.len() as i32;
+    let mut valid_rows = Vec::new();
+    
+    for &row_num in zeilen_numbers {
+        if row_num >= 1 && row_num <= max_row {
+            valid_rows.push(row_num);
+        } else {
+            println!("⚠️  Zeile {} existiert nicht (max: {})", row_num, max_row);
+        }
+    }
+    
+    valid_rows
+}
+
+// Zeigt ausgewählte Zeilen an
+fn show_selected_rows(first: &str, second: &str, zeilen_numbers: &[i32], csv_data: &CsvData) {
+    if zeilen_numbers.is_empty() {
+        println!("ℹ️  Keine Zeilen ausgewählt");
+        return;
+    }
+    
+    println!("\n📋 Ausgewählte CSV-Zeilen für '{}' → '{}':", first, second);
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    
+    let mut matching_rows = 0;
+    let mut total_shown = 0;
+    
+    for &row_num in zeilen_numbers {
+        let index = (row_num - 1) as usize; // 1-basiert zu 0-basiert
+        
+        if index < csv_data.raw_data.len() {
+            let (first_cols, second_cols, numbers) = &csv_data.raw_data[index];
+            
+            if first_cols.contains(&first.to_string()) && second_cols.contains(&second.to_string()) {
+                matching_rows += 1;
+                total_shown += 1;
+                
+                if total_shown <= 20 { // Begrenze die Ausgabe
+                    println!("Zeile {:3}: {}", row_num, format_csv_row(first_cols, second_cols, numbers));
+                }
+            }
+        }
+    }
+    
+    if total_shown > 20 {
+        println!("... und {} weitere Zeilen", total_shown - 20);
+    }
+    
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Gesamt: {} von {} ausgewählten Zeilen passen", matching_rows, zeilen_numbers.len());
+}
+
+// Formatiert eine CSV-Zeile für die Ausgabe
+fn format_csv_row(first_cols: &[String], second_cols: &[String], numbers: &str) -> String {
+    let first_fmt = if first_cols.len() == 1 {
+        first_cols[0].clone()
+    } else {
+        format!("({})", first_cols.join(", "))
+    };
+    
+    let second_fmt = if second_cols.len() == 1 {
+        second_cols[0].clone()
+    } else {
+        format!("({})", second_cols.join(", "))
+    };
+    
+    format!("{} → {} → {}", first_fmt, second_fmt, numbers)
+}
+
+// Zeigt eine Ergebnis-Zusammenfassung
+fn show_ergebnis_zusammenfassung(
+    first: &str,
+    second: &str,
+    zeilen_history: &[i32],
+    csv_data: &CsvData,
+) {
+    println!("\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓");
+    println!("┃ 📊 ERGEBNIS-ZUSAMMENFASSUNG                                           ┃");
+    println!("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+    
+    // Sortiere und entferne Duplikate
+    let mut sorted_rows = zeilen_history.to_vec();
+    sorted_rows.sort();
+    sorted_rows.dedup();
+    
+    println!("Paar: '{}' → '{}'", first, second);
+    println!("Ausgewählte Zeilen: {}", sorted_rows.len());
+    
+    if !sorted_rows.is_empty() {
+        if sorted_rows.len() <= 10 {
+            println!("Zeilennummern: {:?}", sorted_rows);
+        } else {
+            println!("Zeilennummern: {:?} ... und {} weitere", 
+                &sorted_rows[..10], sorted_rows.len() - 10);
+        }
+        
+        // Zeige Statistiken
+        let total_matching = count_matching_rows(first, second, &sorted_rows, csv_data);
+        println!("Davon passende Zeilen: {}", total_matching);
+    }
+}
+
+// Zählt passende Zeilen
+fn count_matching_rows(first: &str, second: &str, zeilen_numbers: &[i32], csv_data: &CsvData) -> i32 {
+    let mut count = 0;
+    
+    for &row_num in zeilen_numbers {
+        let index = (row_num - 1) as usize;
+        
+        if index < csv_data.raw_data.len() {
+            let (first_cols, second_cols, _) = &csv_data.raw_data[index];
+            
+            if first_cols.contains(&first.to_string()) && second_cols.contains(&second.to_string()) {
+                count += 1;
+            }
+        }
+    }
+    
+    count
 }

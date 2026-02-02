@@ -179,23 +179,22 @@ impl CsvParser {
         println!("✅ Geladen: {} CSV-Zeilen", raw_data.len());
         
         // Zeige Beispiele
-        println!("\n🔍 Beispiel-Zuordnungen:");
-        let mut example_count = 0;
-        for (first, seconds) in sorted_first_to_seconds.iter().take(3) {
-            println!("  '{}' → {} Optionen", first, seconds.len());
-            for (i, second) in seconds.iter().take(3).enumerate() {
-                println!("     {}. {}", i + 1, second);
-            }
-            if seconds.len() > 3 {
-                println!("     ... und {} weitere", seconds.len() - 3);
-            }
-            example_count += 1;
-        }
-        
-        if sorted_first_to_seconds.len() > 3 {
-            println!("  ... und {} weitere Zuordnungen", sorted_first_to_seconds.len() - 3);
-        }
-        
+// csv_parser.rs - Entfernen der unbenutzten Variable
+// Zeilen 183-195:
+println!("\n🔍 Beispiel-Zuordnungen:");
+for (first, seconds) in sorted_first_to_seconds.iter().take(3) {
+    println!("  '{}' → {} Optionen", first, seconds.len());
+    for (i, second) in seconds.iter().take(3).enumerate() {
+        println!("     {}. {}", i + 1, second);
+    }
+    if seconds.len() > 3 {
+        println!("     ... und {} weitere", seconds.len() - 3);
+    }
+}
+
+if sorted_first_to_seconds.len() > 3 {
+    println!("  ... und {} weitere Zuordnungen", sorted_first_to_seconds.len() - 3);
+}       
         (sorted_first_to_seconds, all_first_columns, raw_data)
     }
 }

@@ -6,4 +6,7 @@ edition = "2024"
 [dependencies]
 inquire = "0.6"
 anyhow = "1.0"
+regex = "1.12.2"
+lazy_static = "1.5.0"
+chrono = "0.4.43"
 
