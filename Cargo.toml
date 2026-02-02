@@ -1,7 +1,9 @@
 [package]
 name = "interactive-prompts"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 inquire = "0.6"
+anyhow = "1.0"
+
