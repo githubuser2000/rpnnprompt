@@ -173,17 +173,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "interactive-prompts"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "inquire",
- "lazy_static",
- "regex",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -340,6 +329,17 @@ name = "regex-syntax"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
+
+[[package]]
+name = "rpnn"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "inquire",
+ "lazy_static",
+ "regex",
+]
 
 [[package]]
 name = "rustversion"

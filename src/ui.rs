@@ -1,4 +1,5 @@
 // ui.rs - Vollständig korrigierte Version
+use std::process::Command;
 use crate::csv_data::CsvData;
 use inquire::Text;
 use anyhow::Result;
@@ -533,10 +534,19 @@ fn execute_command_experimental(command: &str) {
     let cmd_without_path = command.replace("../target/debug/", "");
     
     println!("Ausführe: {}", cmd_without_path);
+
+    let status = Command::new("zsh")
+        .arg("-c")
+        .arg(cmd_without_path)
+        .status()
+        .expect("sh konnte nicht gestartet werden");
+
+    println!("Exit-Code: {}", status);
+
     
     // ACHTUNG: Dies ist nur ein Beispiel - in der Praxis möchten Sie
     // wahrscheinlich den Benutzer fragen, bevor Sie etwas ausführen
-    println!("ℹ️  Ausführung deaktiviert (Sicherheitsfeature)");
+    //println!("ℹ️  Ausführung deaktiviert (Sicherheitsfeature)");
     println!("   Befehl kann manuell ausgeführt werden.");
 }
 
