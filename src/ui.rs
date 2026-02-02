@@ -359,6 +359,7 @@ fn format_csv_row(first_cols: &[String], second_cols: &[String], numbers: &str) 
 }
 
 // Zeigt eine Ergebnis-Zusammenfassung
+// ui.rs - Erweiterung der show_ergebnis_zusammenfassung Funktion
 fn show_ergebnis_zusammenfassung(
     first: &str,
     second: &str,
@@ -388,7 +389,155 @@ fn show_ergebnis_zusammenfassung(
         // Zeige Statistiken
         let total_matching = count_matching_rows(first, second, &sorted_rows, csv_data);
         println!("Davon passende Zeilen: {}", total_matching);
+        
+        // GENERIERE UND ZEIGE DEN KOMMANDO-STRING
+        generate_and_show_command_string(first, second, &sorted_rows);
     }
+}
+
+// Neue Funktion: Generiert und zeigt den Kommando-String
+fn generate_and_show_command_string(first: &str, second: &str, zeilen_numbers: &[i32]) {
+    println!("\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓");
+    println!("┃ 🚀 GENERIERTER KOMMANDO-AUFRUF                                        ┃");
+    println!("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+    
+    // 1. Konvertiere Zeilennummern in das benötigte Format
+    let zeilen_string = format_zeilen_fuer_kommando(zeilen_numbers);
+    
+    // 2. Baue den Kommando-String
+    let command = format!(
+        "../target/debug/mein-rpnn --vorhervonausschnitt {} --spaltenname {} {}",
+        zeilen_string, first, second
+    );
+    
+    println!("📋 Vollständiger Befehl:");
+    println!("{}", command);
+    
+    // 3. Kopierbare Version (ohne Pfad für einfachere Nutzung)
+    let simplified_command = format!(
+        "mein-rpnn --vorhervonausschnitt {} --spaltenname {} {}",
+        zeilen_string, first, second
+    );
+    
+    println!("\n📝 Vereinfachte Version (zum Kopieren):");
+    println!("{}", simplified_command);
+    
+    // 4. Option zum Kopieren in Zwischenablage (falls unterstützt)
+    offer_copy_option(&command);
+}
+
+// Formatierte Zeilen für den Kommando-Aufruf
+fn format_zeilen_fuer_kommando(zeilen_numbers: &[i32]) -> String {
+    if zeilen_numbers.is_empty() {
+        return String::new();
+    }
+    
+    // Sortiere die Zahlen
+    let mut sorted = zeilen_numbers.to_vec();
+    sorted.sort();
+    
+    // Gruppiere zusammenhängende Bereiche
+    let mut result = String::new();
+    let mut start = sorted[0];
+    let mut prev = sorted[0];
+    
+    for i in 1..sorted.len() {
+        if sorted[i] == prev + 1 {
+            // Fortlaufender Bereich
+            prev = sorted[i];
+        } else {
+            // Bereich beenden und neuen starten
+            if start == prev {
+                result.push_str(&format!("{},", start));
+            } else {
+                result.push_str(&format!("{}-{},", start, prev));
+            }
+            start = sorted[i];
+            prev = sorted[i];
+        }
+    }
+    
+    // Letzten Bereich hinzufügen
+    if start == prev {
+        result.push_str(&format!("{}", start));
+    } else {
+        result.push_str(&format!("{}-{}", start, prev));
+    }
+    
+    result
+}
+
+// Bietet Option zum Kopieren an
+fn offer_copy_option(command: &str) {
+    use std::io::{self, Write};
+    
+    println!("\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓");
+    println!("┃ 📋 KOPIER-OPTIONEN                                                    ┃");
+    println!("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+    
+    println!("1. Den obigen Befehl manuell kopieren");
+    println!("2. Befehl in Datei speichern");
+    println!("3. Direkt ausführen (experimentell)");
+    
+    print!("\nIhre Wahl (1-3, Enter für keine Aktion): ");
+    io::stdout().flush().unwrap();
+    
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap_or(0);
+    let choice = input.trim();
+    
+    match choice {
+        "2" => save_command_to_file(command),
+        "3" => execute_command_experimental(command),
+        _ => println!("ℹ️  Befehl kann manuell kopiert werden."),
+    }
+}
+
+// Speichert den Befehl in eine Datei
+fn save_command_to_file(command: &str) {
+    use std::fs::File;
+    use std::io::Write;
+    
+    let filename = "generated_command.sh";
+    
+    match File::create(filename) {
+        Ok(mut file) => {
+            // Unix/Linux Shell-Skript
+            writeln!(file, "#!/bin/bash").unwrap();
+            writeln!(file, "# Generierter Befehl").unwrap();
+            writeln!(file, "{}", command).unwrap();
+            
+            // Machen Sie es ausführbar (Unix)
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = file.metadata().unwrap().permissions();
+                perms.set_mode(0o755);
+                std::fs::set_permissions(filename, perms).unwrap();
+            }
+            
+            println!("✅ Befehl gespeichert in: {}", filename);
+            println!("   Ausführen mit: bash {}", filename);
+        }
+        Err(e) => {
+            println!("⚠️  Fehler beim Speichern: {}", e);
+        }
+    }
+}
+
+// Versucht den Befehl auszuführen (experimentell)
+fn execute_command_experimental(command: &str) {
+    println!("⚠️  EXPERIMENTELL: Versuche Befehl auszuführen...");
+    
+    // Entferne den relativen Pfad für die Ausführung
+    let cmd_without_path = command.replace("../target/debug/", "");
+    
+    println!("Ausführe: {}", cmd_without_path);
+    
+    // ACHTUNG: Dies ist nur ein Beispiel - in der Praxis möchten Sie
+    // wahrscheinlich den Benutzer fragen, bevor Sie etwas ausführen
+    println!("ℹ️  Ausführung deaktiviert (Sicherheitsfeature)");
+    println!("   Befehl kann manuell ausgeführt werden.");
 }
 
 // Zählt passende Zeilen
