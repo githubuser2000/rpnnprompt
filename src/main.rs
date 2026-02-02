@@ -54,19 +54,18 @@ impl Clone for SimpleAutocomplete {
 }
 
 struct CsvData {
-    first_level_all: Vec<String>, // ALLE Wörter aus erster Spalte
-    second_level_all: Vec<String>, // ALLE Wörter aus zweiter Spalte
-    mapping: HashMap<String, Vec<String>>, // Mapping zwischen erster und zweiter Spalte
-    reverse_mapping: HashMap<String, Vec<String>>, // Umgekehrtes Mapping
-    raw_data: Vec<(Vec<String>, Vec<String>, String)>, // Rohdaten für Details
+    // Für jede erste Spalte (alle Varianten) speichern wir die zugehörigen zweiten Spalten
+    first_to_seconds_map: HashMap<String, Vec<String>>,
+    // Alle ersten Spalten für Autocomplete
+    all_first_columns: Vec<String>,
+    // Rohdaten für Detailsuche
+    raw_data: Vec<(Vec<String>, Vec<String>, String)>,
 }
 
 impl CsvData {
     fn load() -> Result<Self> {
-        let mut first_level_set = HashSet::new();
-        let mut second_level_set = HashSet::new();
-        let mut mapping: HashMap<String, HashSet<String>> = HashMap::new();
-        let mut reverse_mapping: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut first_to_seconds_map: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut all_first_set = HashSet::new();
         let mut raw_data = Vec::new();
         
         println!("📂 Lade CSV-Daten...");
@@ -103,77 +102,60 @@ impl CsvData {
                 String::new()
             };
             
-            // Füge ALLE Wörter zu den Sets hinzu
+            // Für jedes Wort in der ersten Spalte die zugehörigen zweiten Wörter speichern
             for first in &first_columns {
-                first_level_set.insert(first.clone());
+                all_first_set.insert(first.clone());
                 
-                // Erstelle Mapping von jedem ersten Wort zu allen zweiten Wörtern
+                // Füge alle zweiten Wörter für dieses erste Wort hinzu
+                let entry = first_to_seconds_map
+                    .entry(first.clone())
+                    .or_insert_with(HashSet::new);
+                
                 for second in &second_columns {
-                    mapping
-                        .entry(first.clone())
-                        .or_insert_with(HashSet::new)
-                        .insert(second.clone());
-                    
-                    // Umgekehrtes Mapping
-                    reverse_mapping
-                        .entry(second.clone())
-                        .or_insert_with(HashSet::new)
-                        .insert(first.clone());
+                    entry.insert(second.clone());
                 }
-            }
-            
-            for second in &second_columns {
-                second_level_set.insert(second.clone());
             }
             
             raw_data.push((first_columns, second_columns, numbers));
         }
         
-        // Sortiere alles
-        let mut first_level_all: Vec<String> = first_level_set.into_iter().collect();
-        first_level_all.sort_by_key(|s| s.to_lowercase());
-        
-        let mut second_level_all: Vec<String> = second_level_set.into_iter().collect();
-        second_level_all.sort_by_key(|s| s.to_lowercase());
-        
-        // Konvertiere HashSets zu Vectors für bessere Ausgabe
-        let mut sorted_mapping: HashMap<String, Vec<String>> = HashMap::new();
-        for (key, values_set) in mapping {
-            let mut values: Vec<String> = values_set.into_iter().collect();
-            values.sort_by_key(|s| s.to_lowercase());
-            sorted_mapping.insert(key, values);
+        // Konvertiere HashSets zu sortierten Vectors
+        let mut sorted_first_to_seconds: HashMap<String, Vec<String>> = HashMap::new();
+        for (first, seconds_set) in first_to_seconds_map {
+            let mut seconds: Vec<String> = seconds_set.into_iter().collect();
+            seconds.sort_by_key(|s| s.to_lowercase());
+            sorted_first_to_seconds.insert(first, seconds);
         }
         
-        let mut sorted_reverse_mapping: HashMap<String, Vec<String>> = HashMap::new();
-        for (key, values_set) in reverse_mapping {
-            let mut values: Vec<String> = values_set.into_iter().collect();
-            values.sort_by_key(|s| s.to_lowercase());
-            sorted_reverse_mapping.insert(key, values);
+        // Sortiere alle ersten Spalten
+        let mut all_first_columns: Vec<String> = all_first_set.into_iter().collect();
+        all_first_columns.sort_by_key(|s| s.to_lowercase());
+        
+        println!("✅ Geladen: {} verschiedene erste Spalten", all_first_columns.len());
+        println!("✅ Geladen: {} verschiedene Zuordnungen", sorted_first_to_seconds.len());
+        println!("✅ Geladen: {} CSV-Zeilen", raw_data.len());
+        
+        // Zeige Beispiele
+        println!("\n🔍 Beispiel-Zuordnungen:");
+        let mut example_count = 0;
+        for (first, seconds) in sorted_first_to_seconds.iter().take(3) {
+            println!("  '{}' → {} Optionen", first, seconds.len());
+            for (i, second) in seconds.iter().take(3).enumerate() {
+                println!("     {}. {}", i + 1, second);
+            }
+            if seconds.len() > 3 {
+                println!("     ... und {} weitere", seconds.len() - 3);
+            }
+            example_count += 1;
         }
         
-        // Für die Ausgabe: Zeige einige Mappings
-        println!("\n📊 Statistik:");
-        println!("✅ Erste Spalte: {} verschiedene Wörter", first_level_all.len());
-        println!("✅ Zweite Spalte: {} verschiedene Wörter", second_level_all.len());
-        println!("✅ Mappings: {} Zuordnungen", sorted_mapping.len());
-        println!("✅ CSV-Zeilen: {}", raw_data.len());
-        
-        // Zeige Beispiel-Mappings
-        println!("\n🔍 Beispiel-Mappings:");
-        let mut _count = 0;
-        for (first, seconds) in sorted_mapping.iter().take(5) {
-            println!("  '{}' → {} Optionen: {:?}", first, seconds.len(), seconds);
-            _count += 1;
-        }
-        if sorted_mapping.len() > 5 {
-            println!("  ... und {} weitere Mappings", sorted_mapping.len() - 5);
+        if sorted_first_to_seconds.len() > 3 {
+            println!("  ... und {} weitere Zuordnungen", sorted_first_to_seconds.len() - 3);
         }
         
         Ok(Self {
-            first_level_all,
-            second_level_all,
-            mapping: sorted_mapping,
-            reverse_mapping: sorted_reverse_mapping,
+            first_to_seconds_map: sorted_first_to_seconds,
+            all_first_columns,
             raw_data,
         })
     }
@@ -279,22 +261,19 @@ impl CsvData {
     
     // Hole Autocomplete für erste Spalte
     fn get_first_level_autocomplete(&self) -> SimpleAutocomplete {
-        SimpleAutocomplete::new(self.first_level_all.clone())
+        SimpleAutocomplete::new(self.all_first_columns.clone())
     }
     
-    // Hole Autocomplete für zweite Spalte
-    fn get_second_level_autocomplete(&self) -> SimpleAutocomplete {
-        SimpleAutocomplete::new(self.second_level_all.clone())
+    // Hole Autocomplete für zweite Spalte basierend auf erster Auswahl
+    fn get_second_level_autocomplete(&self, first: &str) -> Option<SimpleAutocomplete> {
+        self.first_to_seconds_map
+            .get(first)
+            .map(|seconds| SimpleAutocomplete::new(seconds.clone()))
     }
     
-    // Finde zugehörige zweite Wörter für ein erstes Wort
-    fn find_seconds_for_first(&self, first: &str) -> Vec<String> {
-        self.mapping.get(first).cloned().unwrap_or_default()
-    }
-    
-    // Finde zugehörige erste Wörter für ein zweites Wort
-    fn find_firsts_for_second(&self, second: &str) -> Vec<String> {
-        self.reverse_mapping.get(second).cloned().unwrap_or_default()
+    // Hole zweite Spalten für eine erste Spalte
+    fn get_seconds_for_first(&self, first: &str) -> Option<&Vec<String>> {
+        self.first_to_seconds_map.get(first)
     }
     
     // Finde zugehörige Zahlen für ein Paar
@@ -314,184 +293,125 @@ impl CsvData {
     fn show_details_for_first(&self, first: &str) {
         println!("\n🔍 Details für '{}':", first);
         
-        // Finde alle zugehörigen zweiten Wörter
-        let seconds = self.find_seconds_for_first(first);
-        if seconds.is_empty() {
-            println!("  ⚠️  Keine zugehörigen zweiten Wörter gefunden");
-            return;
-        }
-        
-        println!("  📋 Zugehörige zweite Wörter ({}):", seconds.len());
-        for (i, second) in seconds.iter().enumerate() {
-            print!("    {:2}. {}", i + 1, second);
-            
-            // Zeige zugehörige Nummern
-            let numbers = self.find_numbers_for_pair(first, second);
-            if !numbers.is_empty() {
-                print!(" → {}", numbers.join(", "));
-            }
-            println!();
-        }
-        
-        // Zeige alle CSV-Zeilen die dieses Wort enthalten
-        println!("\n  📄 CSV-Zeilen mit '{}':", first);
-        let mut count = 0;
-        for (i, (first_cols, second_cols, numbers)) in self.raw_data.iter().enumerate() {
-            if first_cols.contains(&first.to_string()) {
-                println!("    Zeile {}: {:?} → {:?} → {}", 
-                    i + 1, first_cols, second_cols, numbers);
-                count += 1;
-                if count >= 3 {
-                    println!("    ...");
-                    break;
+        if let Some(seconds) = self.get_seconds_for_first(first) {
+            println!("  📋 Verfügbare zweite Spalten ({}):", seconds.len());
+            for (i, second) in seconds.iter().enumerate().take(10) {
+                print!("    {:2}. {}", i + 1, second);
+                
+                // Zeige zugehörige Nummern
+                let numbers = self.find_numbers_for_pair(first, second);
+                if !numbers.is_empty() {
+                    print!(" → {}", numbers.join(", "));
                 }
+                println!();
             }
+            
+            if seconds.len() > 10 {
+                println!("    ... und {} weitere", seconds.len() - 10);
+            }
+        } else {
+            println!("  ⚠️  Keine zugehörigen zweiten Spalten gefunden");
         }
     }
     
-    // Zeige alle Details für ein zweites Wort
-    fn show_details_for_second(&self, second: &str) {
-        println!("\n🔍 Details für '{}':", second);
+    // Zeige vollständige Informationen zu einem Paar
+    fn show_pair_details(&self, first: &str, second: &str) {
+        println!("\n🔍 Vollständige Informationen:");
+        println!("  Erste Spalte:  {}", first);
+        println!("  Zweite Spalte: {}", second);
         
-        // Finde alle zugehörigen ersten Wörter
-        let firsts = self.find_firsts_for_second(second);
-        if firsts.is_empty() {
-            println!("  ⚠️  Keine zugehörigen ersten Wörter gefunden");
-            return;
+        let numbers = self.find_numbers_for_pair(first, second);
+        if !numbers.is_empty() {
+            println!("  Zugehörige Nummern: {}", numbers.join(", "));
+        } else {
+            println!("  ℹ️  Keine zugehörigen Nummern gefunden");
         }
         
-        println!("  📋 Zugehörige erste Wörter ({}):", firsts.len());
-        for (i, first) in firsts.iter().enumerate() {
-            print!("    {:2}. {}", i + 1, first);
-            
-            // Zeige zugehörige Nummern
-            let numbers = self.find_numbers_for_pair(first, second);
-            if !numbers.is_empty() {
-                print!(" → {}", numbers.join(", "));
-            }
-            println!();
-        }
-        
-        // Zeige alle CSV-Zeilen die dieses Wort enthalten
-        println!("\n  📄 CSV-Zeilen mit '{}':", second);
-        let mut count = 0;
-        for (i, (first_cols, second_cols, numbers)) in self.raw_data.iter().enumerate() {
-            if second_cols.contains(&second.to_string()) {
+        // Zeige alle CSV-Zeilen mit diesem Paar
+        println!("\n  📄 CSV-Zeilen mit diesem Paar:");
+        let mut found = false;
+        for (i, (first_cols, second_cols, nums)) in self.raw_data.iter().enumerate() {
+            if first_cols.contains(&first.to_string()) && second_cols.contains(&second.to_string()) {
                 println!("    Zeile {}: {:?} → {:?} → {}", 
-                    i + 1, first_cols, second_cols, numbers);
-                count += 1;
-                if count >= 3 {
-                    println!("    ...");
-                    break;
-                }
+                    i + 1, first_cols, second_cols, nums);
+                found = true;
             }
+        }
+        
+        if !found {
+            println!("    ⚠️ Keine direkten Einträge gefunden");
         }
     }
 }
 
 fn main() -> Result<()> {
-    println!("🎯 CSV Kompletter Autocomplete (Beide Spalten)\n");
+    println!("🎯 CSV Zwei-Stufen Autocomplete\n");
     
     // CSV laden
     let csv_data = CsvData::load()?;
     
     loop {
         println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("MENÜ: Wählen Sie eine Suchrichtung");
+        println!("SCHRITT 1: Wählen Sie eine erste Spalte");
         println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("1. Von erster Spalte → zweite Spalte");
-        println!("2. Von zweiter Spalte → erste Spalte");
-        println!("3. Direkte Suche (beide Spalten)");
-        println!("q. Beenden");
         
-        let choice = Text::new("Auswahl (1/2/3/q):")
-            .with_default("1")
+        // Autocomplete für erste Spalte
+        let first_autocomplete = csv_data.get_first_level_autocomplete();
+        let first_choice = Text::new("Erste Spalte auswählen:")
+            .with_autocomplete(first_autocomplete)
+            .with_help_message("Beginnen Sie zu tippen für Vorschläge")
             .prompt()?;
         
-        match choice.trim() {
-            "1" => {
-                println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                println!("SUCHE: Erste Spalte → Zweite Spalte");
-                println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                
-                let first_autocomplete = csv_data.get_first_level_autocomplete();
-                let first_choice = Text::new("Wort aus erster Spalte:")
-                    .with_autocomplete(first_autocomplete)
-                    .with_help_message("Tippen Sie für Vorschläge")
-                    .prompt()?;
-                
-                csv_data.show_details_for_first(&first_choice);
-            }
-            
-            "2" => {
-                println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                println!("SUCHE: Zweite Spalte → Erste Spalte");
-                println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                
-                let second_autocomplete = csv_data.get_second_level_autocomplete();
-                let second_choice = Text::new("Wort aus zweiter Spalte:")
-                    .with_autocomplete(second_autocomplete)
-                    .with_help_message("Tippen Sie für Vorschläge")
-                    .prompt()?;
-                
-                csv_data.show_details_for_second(&second_choice);
-            }
-            
-            "3" => {
-                println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                println!("DIREKTE SUCHE: Beide Spalten");
-                println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                
-                // Zuerst erste Spalte
-                let first_autocomplete = csv_data.get_first_level_autocomplete();
-                let first_choice = Text::new("Erstes Wort:")
-                    .with_autocomplete(first_autocomplete)
-                    .prompt()?;
-                
-                // Dann zweite Spalte (mit Filterung nach erster Wahl)
-                let seconds_for_first = csv_data.find_seconds_for_first(&first_choice);
-                if seconds_for_first.is_empty() {
-                    println!("⚠️ Keine zweiten Wörter für '{}'", first_choice);
-                    continue;
-                }
-                
-                let second_autocomplete = SimpleAutocomplete::new(seconds_for_first.clone());
-                let second_choice = Text::new("Zweites Wort:")
-                    .with_autocomplete(second_autocomplete)
-                    .with_help_message(&format!("{} Optionen verfügbar", seconds_for_first.len()))
-                    .prompt()?;
-                
-                // Ergebnisse anzeigen
-                println!("\n✅ GEFUNDEN: {} → {}", first_choice, second_choice);
-                
-                let numbers = csv_data.find_numbers_for_pair(&first_choice, &second_choice);
-                if !numbers.is_empty() {
-                    println!("🔢 Zugehörige Nummern: {}", numbers.join(", "));
-                }
-                
-                // Zeige alle CSV-Zeilen mit diesem Paar
-                println!("\n📄 Vollständige Einträge:");
-                let mut found = false;
-                for (i, (first_cols, second_cols, nums)) in csv_data.raw_data.iter().enumerate() {
-                    if first_cols.contains(&first_choice) && second_cols.contains(&second_choice) {
-                        println!("  Zeile {}: {:?} → {:?} → {}", 
-                            i + 1, first_cols, second_cols, nums);
-                        found = true;
-                    }
-                }
-                
-                if !found {
-                    println!("  ⚠️ Keine direkten Einträge gefunden");
-                }
-            }
-            
-            "q" | "Q" => {
-                break;
-            }
-            
+        println!("✓ Ausgewählt: '{}'", first_choice);
+        
+        // Zeige Details zu dieser ersten Spalte
+        csv_data.show_details_for_first(&first_choice);
+        
+        // Überprüfe ob es zugehörige zweite Spalten gibt
+        let seconds = match csv_data.get_seconds_for_first(&first_choice) {
+            Some(seconds) if !seconds.is_empty() => seconds,
             _ => {
-                println!("⚠️ Ungültige Auswahl. Bitte 1, 2, 3 oder q eingeben.");
+                println!("\n⚠️  Keine zugehörigen zweiten Spalten für '{}'", first_choice);
+                println!("Möchten Sie eine andere erste Spalte wählen? (j/N)");
+                let again = Text::new("")
+                    .with_default("n")
+                    .prompt()?;
+                
+                if again.to_lowercase().starts_with('j') {
+                    continue;
+                } else {
+                    break;
+                }
             }
+        };
+        
+        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("SCHRITT 2: Wählen Sie eine zweite Spalte");
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("Verfügbare Optionen für '{}':", first_choice);
+        
+        // Autocomplete für zweite Spalte (abhängig von erster Wahl)
+        let second_autocomplete = csv_data.get_second_level_autocomplete(&first_choice)
+            .expect("Sollte existieren da seconds vorhanden sind");
+        
+        let second_choice = Text::new("Zweite Spalte auswählen:")
+            .with_autocomplete(second_autocomplete)
+            .with_help_message(&format!("{} Optionen verfügbar", seconds.len()))
+            .prompt()?;
+        
+        println!("✓ Ausgewählt: '{}' → '{}'", first_choice, second_choice);
+        
+        // Zeige vollständige Details zum Paar
+        csv_data.show_pair_details(&first_choice, &second_choice);
+        
+        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("Möchten Sie eine weitere Suche durchführen? (j/N)");
+        let again = Text::new("Weitersuchen?")
+            .with_default("n")
+            .prompt()?;
+            
+        if !again.to_lowercase().starts_with('j') {
+            break;
         }
         
         println!("\n⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼");
