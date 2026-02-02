@@ -17,8 +17,6 @@ impl SimpleAutocomplete {
     }
 }
 
-// Da `Clone` bereits implementiert ist, können wir DynClone automatisch ableiten lassen
-// durch die Verwendung von `dyn_clone::clone_box` Standard-Implementierung
 impl Autocomplete for SimpleAutocomplete {
     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, Box<dyn Error + Send + Sync>> {
         let input_lower = input.trim().to_lowercase();
@@ -48,7 +46,7 @@ impl Autocomplete for SimpleAutocomplete {
     }
 }
 
-// DynClone automatisch ableiten (durch Clone)
+// Clone automatisch ableiten
 impl Clone for SimpleAutocomplete {
     fn clone(&self) -> Self {
         Self::new(self.items.clone())
@@ -58,14 +56,16 @@ impl Clone for SimpleAutocomplete {
 struct CsvData {
     first_level: Vec<String>,
     second_level_map: HashMap<String, Vec<String>>,
+    raw_data: Vec<(String, Vec<String>, String)>, // Für schnelleren Zugriff auf Nummern
 }
 
 impl CsvData {
     fn load() -> Result<Self> {
         let mut first_level_set = HashSet::new();
-        let mut second_level_map = HashMap::new();
+        let mut second_level_map: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut raw_data = Vec::new();
         
-        println!("Lade CSV-Daten...");
+        println!("📂 Lade CSV-Daten...");
         
         for line in CSV_DATA.lines() {
             let line = line.trim();
@@ -87,30 +87,60 @@ impl CsvData {
             
             first_level_set.insert(first_column.clone());
             
-            // Zweite Spalte extrahieren
+            // Zweite Spalte extrahieren - ALLE Wörter!
+            let mut second_columns_vec = Vec::new();
             if let Some(second_part) = parts.get(1) {
                 let second_columns = Self::parse_second_column(second_part);
-                if !second_columns.is_empty() {
-                    second_level_map.insert(first_column, second_columns);
+                second_columns_vec = second_columns.clone();
+                
+                // Füge alle Wörter zur HashMap hinzu
+                for column in &second_columns {
+                    second_level_map
+                        .entry(first_column.clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(column.clone());
                 }
             }
+            
+            // Dritte Spalte (Zahlen) speichern
+            let numbers = if let Some(third_part) = parts.get(2) {
+                third_part.to_string()
+            } else {
+                String::new()
+            };
+            
+            raw_data.push((first_column.clone(), second_columns_vec, numbers));
         }
         
         // Sortiere alles
         let mut first_level: Vec<String> = first_level_set.into_iter().collect();
         first_level.sort_by_key(|s| s.to_lowercase());
         
-        for values in second_level_map.values_mut() {
+        // Konvertiere HashSet zu Vec und sortiere
+        let mut final_second_level_map: HashMap<String, Vec<String>> = HashMap::new();
+        for (key, values_set) in second_level_map {
+            let mut values: Vec<String> = values_set.into_iter().collect();
             values.sort_by_key(|s| s.to_lowercase());
-            values.dedup();
+            final_second_level_map.insert(key, values);
         }
         
-        println!("Erste Spalte: {} Einträge", first_level.len());
-        println!("Zweite Spalte: {} Zuordnungen", second_level_map.len());
+        println!("✅ Erste Spalte: {} Einträge", first_level.len());
+        println!("✅ Zweite Spalte: {} Zuordnungen", final_second_level_map.len());
+        println!("✅ Gesamt: {} CSV-Zeilen verarbeitet", raw_data.len());
+        
+        // Zeige Beispiel-Daten
+        println!("\n📊 Beispiel-Daten:");
+        for (i, (first, seconds, numbers)) in raw_data.iter().take(3).enumerate() {
+            println!("  {}. {} → {:?} → {}", i + 1, first, seconds, numbers);
+        }
+        if raw_data.len() > 3 {
+            println!("  ... und {} weitere Zeilen", raw_data.len() - 3);
+        }
         
         Ok(Self {
             first_level,
-            second_level_map,
+            second_level_map: final_second_level_map,
+            raw_data,
         })
     }
     
@@ -120,7 +150,7 @@ impl CsvData {
         // Entferne äußere Klammern
         if trimmed.starts_with('(') {
             // Finde ersten Eintrag in Anführungszeichen
-            let mut chars = trimmed.chars();
+            let chars = trimmed.chars();
             let mut in_quote = false;
             let mut result = String::new();
             
@@ -131,6 +161,8 @@ impl CsvData {
                     result.push(c);
                 } else if c == ',' && !result.is_empty() {
                     break; // Ersten Eintrag gefunden
+                } else if c == ')' && !result.is_empty() {
+                    break; // Ende der Klammer
                 }
             }
             
@@ -144,10 +176,51 @@ impl CsvData {
     }
     
     fn parse_second_column(text: &str) -> Vec<String> {
-        text.split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
+        let mut result = Vec::new();
+        let text = text.trim();
+        
+        // Manuelles Parsing um komplexe Fälle zu handhaben
+        let mut current = String::new();
+        let mut in_parentheses = 0;
+        let mut chars = text.chars().peekable();
+        
+        while let Some(c) = chars.next() {
+            match c {
+                '(' => {
+                    in_parentheses += 1;
+                    current.push(c);
+                }
+                ')' => {
+                    if in_parentheses > 0 {
+                        in_parentheses -= 1;
+                    }
+                    current.push(c);
+                }
+                ',' => {
+                    if in_parentheses == 0 {
+                        // Ende eines Eintrags
+                        let trimmed = current.trim().to_string();
+                        if !trimmed.is_empty() {
+                            result.push(trimmed);
+                        }
+                        current.clear();
+                    } else {
+                        current.push(c);
+                    }
+                }
+                _ => {
+                    current.push(c);
+                }
+            }
+        }
+        
+        // Letzten Eintrag hinzufügen
+        let trimmed = current.trim().to_string();
+        if !trimmed.is_empty() {
+            result.push(trimmed);
+        }
+        
+        result
     }
     
     fn get_first_level_autocomplete(&self) -> SimpleAutocomplete {
@@ -163,72 +236,127 @@ impl CsvData {
     fn get_second_level_options(&self, key: &str) -> Option<&Vec<String>> {
         self.second_level_map.get(key)
     }
+    
+    // Finde zugehörige Zahlen für ein Paar
+    fn find_numbers_for_pair(&self, first: &str, second: &str) -> Vec<String> {
+        let mut results = Vec::new();
+        
+        for (first_col, second_cols, numbers) in &self.raw_data {
+            if first_col == first && second_cols.contains(&second.to_string()) {
+                results.push(numbers.clone());
+            }
+        }
+        
+        results
+    }
+    
+    // Neue Funktion: Zeige alle zweiten-Level Optionen mit Details
+    fn show_second_level_details(&self, key: &str) {
+        if let Some(options) = self.second_level_map.get(key) {
+            println!("🔍 Alle Optionen für '{}':", key);
+            for (i, option) in options.iter().enumerate() {
+                print!("  {:2}. {}", i + 1, option);
+                
+                // Finde zugehörige Nummern
+                let numbers = self.find_numbers_for_pair(key, option);
+                if !numbers.is_empty() {
+                    print!(" → {}", numbers.join(", "));
+                }
+                println!();
+            }
+        }
+    }
 }
 
 fn main() -> Result<()> {
-    println!("=== CSV Zwei-Stufen Autocomplete ===\n");
+    println!("🎯 CSV Zwei-Stufen Autocomplete\n");
     
     // CSV laden
     let csv_data = CsvData::load()?;
     
-    // ERSTE STUFE
-    println!("Schritt 1/2: Wählen Sie einen Begriff aus der ersten Spalte");
-    println!("Verfügbare Optionen ({}):", csv_data.first_level.len());
-    
-    let first_autocomplete = csv_data.get_first_level_autocomplete();
-    let first_choice = Text::new("Erste Spalte auswählen:")
-        .with_autocomplete(first_autocomplete)
-        .with_help_message("Tippen Sie um Optionen zu sehen")
-        .prompt()?;
-    
-    println!("✓ Gewählt: {}\n", first_choice);
-    
-    // ZWEITE STUFE
-    if let Some(second_options) = csv_data.get_second_level_options(&first_choice) {
-        println!("Schritt 2/2: Wählen Sie einen Wert aus der zweiten Spalte");
-        println!("Verfügbare Optionen für '{}' ({}):", first_choice, second_options.len());
+    loop {
+        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("Schritt 1/2: Erste Spalte auswählen");
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         
-        let second_autocomplete = csv_data.get_second_level_autocomplete(&first_choice)
-            .expect("Sollte existieren da second_options Some ist");
-        
-        let second_choice = Text::new("Zweite Spalte auswählen:")
-            .with_autocomplete(second_autocomplete)
-            .with_help_message("Tippen Sie um Optionen zu sehen")
+        let first_autocomplete = csv_data.get_first_level_autocomplete();
+        let first_choice = Text::new("Erste Spalte:")
+            .with_autocomplete(first_autocomplete)
+            .with_help_message("Tippen Sie für Vorschläge")
             .prompt()?;
         
-        println!("\n✅ Auswahl vollständig!");
-        println!("─────────────────────────────");
-        println!("Erste Spalte:  {}", first_choice);
-        println!("Zweite Spalte: {}", second_choice);
-        println!("─────────────────────────────");
+        println!("✓ Gewählt: {}\n", first_choice);
         
-        // OPTIONAL: Die zugehörigen Zahlen (dritte Spalte) finden
-        println!("\n🔍 Suche nach zugehörigen Daten...");
+        // Zeige alle verfügbaren Optionen für diese erste Spalte
+        csv_data.show_second_level_details(&first_choice);
         
-        // Durchsuche CSV nach diesem Paar
-        for line in CSV_DATA.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
+        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("Schritt 2/2: Zweite Spalte auswählen");
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        
+        if let Some(second_autocomplete) = csv_data.get_second_level_autocomplete(&first_choice) {
+            let second_choice = Text::new("Zweite Spalte:")
+                .with_autocomplete(second_autocomplete)
+                .with_help_message("Tippen Sie für Vorschläge")
+                .prompt()?;
+            
+            // Ergebnisse anzeigen
+            println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!("✅ AUSWAHL VOLLSTÄNDIG");
+            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            println!("📋 Erste Spalte:  {}", first_choice);
+            println!("📋 Zweite Spalte: {}", second_choice);
+            
+            // Zugehörige Zahlen finden
+            let numbers = csv_data.find_numbers_for_pair(&first_choice, &second_choice);
+            if !numbers.is_empty() {
+                println!("🔢 Zugehörige Nummern: {}", numbers.join(", "));
+            } else {
+                println!("ℹ️  Keine zugehörigen Nummern gefunden");
             }
             
-            let parts: Vec<&str> = line.split(';').collect();
-            if parts.len() < 3 {
-                continue;
-            }
-            
-            let first_col = CsvData::parse_first_column(parts[0]);
-            let second_cols = CsvData::parse_second_column(parts[1]);
-            
-            if first_col == first_choice && second_cols.contains(&second_choice) {
-                if let Some(numbers_part) = parts.get(2) {
-                    println!("Gefundene Nummern: {}", numbers_part);
-                    break;
+            // Finde die exakte CSV-Zeile
+            println!("\n🔍 Vollständige CSV-Zeile(n):");
+            let mut found = false;
+            for (i, line) in CSV_DATA.lines().enumerate() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                
+                let parts: Vec<&str> = line.split(';').collect();
+                if parts.len() < 2 {
+                    continue;
+                }
+                
+                let first_col = CsvData::parse_first_column(parts[0]);
+                let second_cols = CsvData::parse_second_column(parts[1]);
+                
+                if first_col == first_choice && second_cols.contains(&second_choice) {
+                    println!("  Zeile {}: {}", i + 1, line);
+                    found = true;
                 }
             }
+            
+            if !found {
+                println!("  Keine exakte Zeile gefunden");
+            }
+            
+        } else {
+            println!("⚠️ Keine zweiten-Level Optionen für '{}'", first_choice);
         }
-    } else {
-        println!("⚠️ Keine zweiten-Level Optionen für '{}'", first_choice);
+        
+        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("Möchten Sie eine weitere Suche durchführen? (j/N)");
+        let again = Text::new("Weitersuchen?")
+            .with_default("n")
+            .prompt()?;
+            
+        if !again.to_lowercase().starts_with('j') {
+            break;
+        }
+        
+        println!("\n⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼");
     }
     
     println!("\n🏁 Programm beendet.");
